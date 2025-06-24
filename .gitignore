@@ -1,194 +1,314 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
+-import sys
+import json
+import os
+from datetime import datetime
 
-# C extensions
-*.so
+# Define the name of the JSON file where tasks will be stored.
+TASK_FILE = 'tasks.json'
 
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
 
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
+def _load_tasks():
+    """
+    Loads tasks from the JSON file.
 
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
+    If the file does not exist, an empty list is returned.
+    Handles potential JSON decoding errors (e.g., if the file is corrupted)
+    by printing an error and returning an empty list, preventing the application from crashing.
+    """
+    if not os.path.exists(TASK_FILE):
+        return []
+    try:
+        with open(TASK_FILE, 'r', encoding='utf-8') as f:
+            tasks = json.load(f)
+        return tasks
+    except json.JSONDecodeError:
+        print(
+            f"Error: Could not decode JSON from {TASK_FILE}. The file might be corrupted. Starting with an empty task list.")
+        return []
+    except Exception as e:
+        print(f"An unexpected error occurred while loading tasks: {e}")
+        return []
 
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
-cover/
 
-# Translations
-*.mo
-*.pot
+def _save_tasks(tasks):
+    """
+    Saves the current list of tasks to the JSON file.
 
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
+    Tasks are saved with an indentation of 4 spaces for readability.
+    Handles potential errors during file writing.
+    """
+    try:
+        with open(TASK_FILE, 'w', encoding='utf-8') as f:
+            json.dump(tasks, f, indent=4)
+    except Exception as e:
+        print(f"Error: Could not save tasks to {TASK_FILE}: {e}")
 
-# Flask stuff:
-instance/
-.webassets-cache
 
-# Scrapy stuff:
-.scrapy
+def _get_next_id(tasks):
+    """
+    Generates the next unique integer ID for a new task.
 
-# Sphinx documentation
-docs/_build/
+    If there are no existing tasks, the first ID will be 1.
+    Otherwise, it finds the maximum existing ID and increments it.
+    """
+    if not tasks:
+        return 1
+    # Ensure all task IDs are integers before finding the maximum
+    return max(task['id'] for task in tasks if isinstance(task.get('id'), int)) + 1
 
-# PyBuilder
-.pybuilder/
-target/
 
-# Jupyter Notebook
-.ipynb_checkpoints
+def add_task(description):
+    """
+    Adds a new task with the given description.
 
-# IPython
-profile_default/
-ipython_config.py
+    The task is initialized with 'todo' status and current timestamps for
+    'createdAt' and 'updatedAt'.
+    """
+    tasks = _load_tasks()
+    new_id = _get_next_id(tasks)
+    now = datetime.now().isoformat()  # Store date and time in ISO 8601 format
+    new_task = {
+        'id': new_id,
+        'description': description,
+        'status': 'todo',  # Default status for new tasks
+        'createdAt': now,
+        'updatedAt': now
+    }
+    tasks.append(new_task)
+    _save_tasks(tasks)
+    print(f"Task added successfully (ID: {new_id})")
 
-# pyenv
-#   For a library or package, you might want to ignore these files since the code is
-#   intended to run in multiple environments; otherwise, check them in:
-# .python-version
 
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
-#Pipfile.lock
+def update_task(task_id, new_description):
+    """
+    Updates the description of an existing task.
 
-# UV
-#   Similar to Pipfile.lock, it is generally recommended to include uv.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#uv.lock
+    The 'updatedAt' timestamp is also updated.
+    Prints an error if the task ID is not found.
+    """
+    tasks = _load_tasks()
+    found = False
+    for task in tasks:
+        if task.get('id') == task_id:  # Use .get() for safer access, though 'id' is guaranteed
+            task['description'] = new_description
+            task['updatedAt'] = datetime.now().isoformat()
+            found = True
+            break
+    if found:
+        _save_tasks(tasks)
+        print(f"Task {task_id} updated successfully.")
+    else:
+        print(f"Error: Task with ID {task_id} not found.")
 
-# poetry
-#   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
-#poetry.lock
 
-# pdm
-#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
-#pdm.lock
-#   pdm stores project-wide configurations in .pdm.toml, but it is recommended to not include it
-#   in version control.
-#   https://pdm.fming.dev/latest/usage/project/#working-with-version-control
-.pdm.toml
-.pdm-python
-.pdm-build/
+def delete_task(task_id):
+    """
+    Deletes a task by its ID.
 
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
-__pypackages__/
+    Prints an error if the task ID is not found.
+    """
+    tasks = _load_tasks()
+    initial_len = len(tasks)
+    # Filter out the task with the given ID
+    tasks = [task for task in tasks if task.get('id') != task_id]
+    if len(tasks) < initial_len:  # Check if a task was actually removed
+        _save_tasks(tasks)
+        print(f"Task {task_id} deleted successfully.")
+    else:
+        print(f"Error: Task with ID {task_id} not found.")
 
-# Celery stuff
-celerybeat-schedule
-celerybeat.pid
 
-# SageMath parsed files
-*.sage.py
+def mark_task(task_id, new_status):
+    """
+    Marks a task with a new status ('in-progress' or 'done').
 
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+    The 'updatedAt' timestamp is also updated.
+    Prints an error if the task ID is not found.
+    """
+    tasks = _load_tasks()
+    found = False
+    for task in tasks:
+        if task.get('id') == task_id:
+            task['status'] = new_status
+            task['updatedAt'] = datetime.now().isoformat()
+            found = True
+            break
+    if found:
+        _save_tasks(tasks)
+        print(f"Task {task_id} marked as '{new_status}'.")
+    else:
+        print(f"Error: Task with ID {task_id} not found.")
 
-# Spyder project settings
-.spyderproject
-.spyproject
 
-# Rope project settings
-.ropeproject
+def list_tasks(status_filter=None):
+    """
+    Lists tasks, optionally filtered by status.
 
-# mkdocs documentation
-/site
+    If status_filter is None, all tasks are listed.
+    Accepts 'todo', 'in-progress', 'done' as filters.
+    Formats the output for clear readability, including creation and update times.
+    """
+    tasks = _load_tasks()
 
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
+    if not tasks:
+        print("No tasks found.")
+        return
 
-# Pyre type checker
-.pyre/
+    filtered_tasks = []
+    if status_filter and status_filter != 'all':  # 'all' is treated as no filter
+        for task in tasks:
+            if task.get('status') == status_filter:
+                filtered_tasks.append(task)
+    else:
+        filtered_tasks = tasks
 
-# pytype static type analyzer
-.pytype/
+    if not filtered_tasks:
+        if status_filter:
+            print(f"No tasks found with status '{status_filter}'.")
+        else:
+            # This case should ideally be caught by 'if not tasks:' but provides extra robustness.
+            print("No tasks found.")
+        return
 
-# Cython debug symbols
-cython_debug/
+    # Print header based on filter
+    header = "All Tasks" if status_filter is None or status_filter == 'all' else f"{status_filter.capitalize()} Tasks"
+    print(f"\n--- {header} ---")
 
-# PyCharm
-#  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
-#  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
-#  and can be added to the global gitignore or merged into this file.  For a more nuclear
-#  option (not recommended) you can uncomment the following to ignore the entire idea folder.
-#.idea/
+    # Sort tasks by ID for consistent listing
+    filtered_tasks.sort(key=lambda t: t.get('id', 0))
 
-# Abstra
-# Abstra is an AI-powered process automation framework.
-# Ignore directories containing user credentials, local state, and settings.
-# Learn more at https://abstra.io/docs
-.abstra/
+    for task in filtered_tasks:
+        task_id = task.get('id', 'N/A')
+        description = task.get('description', 'No description')
+        status = task.get('status', 'unknown')
+        createdAt_str = task.get('createdAt', 'N/A')
+        updatedAt_str = task.get('updatedAt', 'N/A')
 
-# Visual Studio Code
-#  Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
-#  that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
-#  and can be added to the global gitignore or merged into this file. However, if you prefer, 
-#  you could uncomment the following to ignore the enitre vscode folder
-# .vscode/
+        # Attempt to format dates, handle errors if date string is invalid
+        try:
+            created_at = datetime.fromisoformat(createdAt_str).strftime('%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            created_at = createdAt_str  # Keep original if invalid format
 
-# Ruff stuff:
-.ruff_cache/
+        try:
+            updated_at = datetime.fromisoformat(updatedAt_str).strftime('%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            updated_at = updatedAt_str  # Keep original if invalid format
 
-# PyPI configuration file
-.pypirc
+        print(f"ID: {task_id}")
+        print(f"  Description: {description}")
+        print(f"  Status: {status}")
+        print(f"  Created At: {created_at}")
+        print(f"  Updated At: {updated_at}")
+        print("-" * 20)  # Separator for tasks
+    print("---------------------\n")
 
-# Cursor
-#  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
-#  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
-#  refer to https://docs.cursor.com/context/ignore-files
-.cursorignore
-.cursorindexingignore
+
+def print_usage():
+    """
+    Prints the command-line usage instructions for the Task Tracker CLI.
+    This is displayed when incorrect commands or arguments are provided.
+    """
+    print("Usage:")
+    print("  python task_cli.py add \"<description>\"")
+    print("  python task_cli.py update <id> \"<new description>\"")
+    print("  python task_cli.py delete <id>")
+    print("  python task_cli.py mark-in-progress <id>")
+    print("  python task_cli.py mark-done <id>")
+    print("  python task_cli.py list [todo|in-progress|done|all]")
+    print("\nExamples:")
+    print("  python task_cli.py add \"Buy groceries\"")
+    print("  python task_cli.py update 1 \"Buy groceries and cook dinner\"")
+    print("  python task_cli.py list done")
+    print("  python task_cli.py list all")
+
+
+def main():
+    """
+    The main function that serves as the entry point for the CLI application.
+    It parses command-line arguments and calls the appropriate task management function.
+    Handles basic argument validation and error messages.
+    """
+    if len(sys.argv) < 2:
+        print_usage()
+        sys.exit(1)  # Exit with an error code
+
+    command = sys.argv[1].lower()  # The command (e.g., 'add', 'list')
+
+    if command == 'add':
+        if len(sys.argv) < 3:
+            print("Error: Missing task description for 'add' command.")
+            print_usage()
+            sys.exit(1)
+        description = sys.argv[2]
+        add_task(description)
+    elif command == 'update':
+        if len(sys.argv) < 4:
+            print("Error: Missing task ID or new description for 'update' command.")
+            print_usage()
+            sys.exit(1)
+        try:
+            task_id = int(sys.argv[2])
+            new_description = sys.argv[3]
+            update_task(task_id, new_description)
+        except ValueError:
+            print("Error: Task ID must be a number.")
+            print_usage()
+            sys.exit(1)
+    elif command == 'delete':
+        if len(sys.argv) < 3:
+            print("Error: Missing task ID for 'delete' command.")
+            print_usage()
+            sys.exit(1)
+        try:
+            task_id = int(sys.argv[2])
+            delete_task(task_id)
+        except ValueError:
+            print("Error: Task ID must be a number.")
+            print_usage()
+            sys.exit(1)
+    elif command == 'mark-in-progress':
+        if len(sys.argv) < 3:
+            print("Error: Missing task ID for 'mark-in-progress' command.")
+            print_usage()
+            sys.exit(1)
+        try:
+            task_id = int(sys.argv[2])
+            mark_task(task_id, 'in-progress')
+        except ValueError:
+            print("Error: Task ID must be a number.")
+            print_usage()
+            sys.exit(1)
+    elif command == 'mark-done':
+        if len(sys.argv) < 3:
+            print("Error: Missing task ID for 'mark-done' command.")
+            print_usage()
+            sys.exit(1)
+        try:
+            task_id = int(sys.argv[2])
+            mark_task(task_id, 'done')
+        except ValueError:
+            print("Error: Task ID must be a number.")
+            print_usage()
+            sys.exit(1)
+    elif command == 'list':
+        status_filter = None
+        if len(sys.argv) >= 3:
+            filter_arg = sys.argv[2].lower()
+            if filter_arg in ['todo', 'in-progress', 'done', 'all']:
+                status_filter = filter_arg
+            else:
+                print(f"Error: Invalid list filter '{filter_arg}'. Use 'todo', 'in-progress', 'done', or 'all'.")
+                print_usage()
+                sys.exit(1)
+        list_tasks(status_filter)
+    else:
+        print(f"Error: Unknown command '{command}'.")
+        print_usage()
+        sys.exit(1)
+
+
+# This ensures that main() is called only when the script is executed directly,
+# not when imported as a module.
+if __name__ == "__main__":
+    main()
