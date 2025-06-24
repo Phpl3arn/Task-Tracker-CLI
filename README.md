@@ -7,7 +7,7 @@ How to run
 
 Clone the repository and run the following command:
 
-git clone https://github.com/Phpl3arn?tab=repositories
+git clone https://github.com/Phpl3arn/Task-Tracker-CLI.git
 
 # Adding a new task
 python python.clı.py add "Buy groceries"
